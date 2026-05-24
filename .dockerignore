@@ -1,0 +1,15 @@
+**/bin
+**/obj
+**/.vs
+**/.idea
+**/.vscode
+.git
+.gitignore
+.env
+.env.local
+.docker-data
+docs
+README.md
+DECISIONS.md
+TestResults
+*.log

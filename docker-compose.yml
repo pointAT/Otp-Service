@@ -1,0 +1,190 @@
+
+
+services:
+  # ─────────────────────────────────────────────────────────
+  # Postgres — durable OTP state
+  # ─────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: otp-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ─────────────────────────────────────────────────────────
+  # Redis — dedupe + rate limiting
+  # ─────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: otp-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ─────────────────────────────────────────────────────────
+  # Kafka — KRaft mode, no Zookeeper
+  # ─────────────────────────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: otp-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093,PLAINTEXT_HOST://0.0.0.0:9092"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      # Single-node defaults
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # Cluster id required for KRaft
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+      # Disable auto-create — we declare the topic explicitly in app code
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ─────────────────────────────────────────────────────────
+  # Kafka UI — visualize topics, partitions, consumer groups
+  # ─────────────────────────────────────────────────────────
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: otp-kafka-ui
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: "otp-local"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:29092"
+      DYNAMIC_CONFIG_ENABLED: "true"
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────────────────
+  # RabbitMQ — delivery pipeline with priority + DLX
+  # ─────────────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: otp-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RabbitMq__Username}
+      RABBITMQ_DEFAULT_PASS: ${RabbitMq__Password}
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ─────────────────────────────────────────────────────────
+  # Mock Meta — pretends to be Meta WhatsApp Business Cloud API
+  # ─────────────────────────────────────────────────────────
+  mockmeta:
+    build:
+      context: .
+      dockerfile: src/OtpService.MockMeta/Dockerfile
+    container_name: otp-mockmeta
+    env_file: .env
+    ports:
+      - "8085:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────────────────
+  # OTP Api — verify, webhook, status endpoints
+  # ─────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: src/OtpService.Api/Dockerfile
+    container_name: otp-api
+    env_file: .env
+    ports:
+      - "8081:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────────────────
+  # OTP Ingestion — Kafka consumer → RabbitMQ producer
+  # ─────────────────────────────────────────────────────────
+  ingestion:
+    build:
+      context: .
+      dockerfile: src/OtpService.Ingestion/Dockerfile
+    container_name: otp-ingestion
+    env_file: .env
+    ports:
+      - "8082:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────────────────
+  # OTP Delivery — RabbitMQ consumer → WhatsApp provider
+  # ─────────────────────────────────────────────────────────
+  delivery:
+    build:
+      context: .
+      dockerfile: src/OtpService.Delivery/Dockerfile
+    container_name: otp-delivery
+    env_file: .env
+    ports:
+      - "8083:8080"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      mockmeta:
+        condition: service_started
+
+volumes:
+  postgres-data:
+  redis-data:
+  kafka-data:
+  rabbitmq-data:
