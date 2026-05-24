@@ -1,5 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
+  <ItemGroup>
+    <ProjectReference Include="..\OtpService.Core\OtpService.Core.csproj" />
+    <ProjectReference Include="..\OtpService.Infrastructure\OtpService.Infrastructure.csproj" />
+    <ProjectReference Include="..\OtpService.Providers\OtpService.Providers.csproj" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>

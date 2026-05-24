@@ -18,4 +18,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OtpService.Core\OtpService.Core.csproj" />
+    <ProjectReference Include="..\..\src\OtpService.Infrastructure\OtpService.Infrastructure.csproj" />
+  </ItemGroup>
+
 </Project>
