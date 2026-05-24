@@ -12,7 +12,7 @@ using OtpService.Infrastructure.Persistence;
 namespace OtpService.Infrastructure.Migrations
 {
     [DbContext(typeof(OtpDbContext))]
-    [Migration("20260524162005_InitialCreate")]
+    [Migration("20260524162728_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -111,9 +111,6 @@ namespace OtpService.Infrastructure.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)")
                         .HasColumnName("whatsapp_message_id");
-
-                    b.Property<long>("Xmin")
-                        .HasColumnType("bigint");
 
                     b.Property<uint>("xmin")
                         .IsConcurrencyToken()

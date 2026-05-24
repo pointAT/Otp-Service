@@ -14,10 +14,9 @@ public sealed class OtpRecordConfiguration : IEntityTypeConfiguration<OtpRecord>
         // Optimistic concurrency via Postgres xmin system column 
         // Catches racing UPDATEs (e.g. two verify requests on the same OTP)
         // by throwing DbUpdateConcurrencyException instead of silently overwriting.
-        builder
-            .Property<uint>("xmin")
-            .IsRowVersion()
-            .Metadata.SetColumnName("xmin");
+       
+        builder.Property<uint>("xmin")
+            .IsRowVersion();
         // ─── Identity columns ────────────────────────────────────────
         builder.Property(x => x.Id)
             .HasColumnName("id");

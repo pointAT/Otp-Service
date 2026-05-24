@@ -109,9 +109,6 @@ namespace OtpService.Infrastructure.Migrations
                         .HasColumnType("character varying(128)")
                         .HasColumnName("whatsapp_message_id");
 
-                    b.Property<long>("Xmin")
-                        .HasColumnType("bigint");
-
                     b.Property<uint>("xmin")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()

@@ -41,7 +41,6 @@ namespace OtpService.Core.Models
         public DateTimeOffset ExpiresAt { get; set; }
         public DateTimeOffset? VerifiedAt { get; set; }
 
-        //Optimistic concurrency ،ean that he check if race condition happend or not 
-        public uint Xmin { get; set; }
+      
     }
 }

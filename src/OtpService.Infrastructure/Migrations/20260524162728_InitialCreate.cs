@@ -32,7 +32,6 @@ namespace OtpService.Infrastructure.Migrations
                     created_at = table.Column<DateTimeOffset>(type: "timestamptz", nullable: false, defaultValueSql: "now()"),
                     expires_at = table.Column<DateTimeOffset>(type: "timestamptz", nullable: false),
                     verified_at = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
-                    Xmin = table.Column<long>(type: "bigint", nullable: false),
                     xmin = table.Column<uint>(type: "xid", rowVersion: true, nullable: false)
                 },
                 constraints: table =>
