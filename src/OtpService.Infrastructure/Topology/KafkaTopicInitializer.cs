@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OtpService.Infrastructure.Configuration;
 
-namespace OtpService.Infrastructure.topology;
+namespace OtpService.Infrastructure.Topology;
 //the class that creates the topic at startup
 //This is the actual logic. It runs once at startup
 

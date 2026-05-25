@@ -1,5 +1,5 @@
 using OtpService.Infrastructure.Configuration;
-using OtpService.Infrastructure.topology;
+using OtpService.Infrastructure.Topology;
 
 var builder = Host.CreateApplicationBuilder(args);
 
