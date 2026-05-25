@@ -17,6 +17,10 @@
     <PackageReference Include="StackExchange.Redis" Version="2.13.1" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Kafka\" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
