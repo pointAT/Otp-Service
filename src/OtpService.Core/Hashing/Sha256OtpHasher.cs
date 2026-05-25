@@ -33,6 +33,11 @@ public sealed class Sha256OtpHasher : IOtpHasher
         // Return  secure 32-byte salt
         return RandomNumberGenerator.GetBytes(32);
     }
+    
+    public bool FixedTimeEquals(byte[] a, byte[] b)
+    {
+        return CryptographicOperations.FixedTimeEquals(a, b);
+    }
 
    
 }

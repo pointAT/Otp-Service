@@ -7,6 +7,9 @@ public interface IOtpHasher
 
     //Generate 32-byte random salt.
     byte[] GenerateSalt();
+    
+    bool FixedTimeEquals(byte[] a, byte[] b);
+
 
     
 }

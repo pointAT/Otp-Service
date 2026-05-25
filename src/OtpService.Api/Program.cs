@@ -1,6 +1,14 @@
 using Microsoft.EntityFrameworkCore;
+using OtpService.Api.Endpoints;
+using OtpService.Core.Configuration;
+using OtpService.Core.Hashing;
 using OtpService.Infrastructure.Persistence;
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.Configure<OtpOptions>(
+    builder.Configuration.GetSection("Otp"));
+
+
 var postgresConn = builder.Configuration.GetConnectionString("Postgres")
                    ?? throw new InvalidOperationException("ConnectionStrings:Postgres is not configured.");
 
@@ -8,22 +16,16 @@ builder.Services.AddDbContext<OtpDbContext>(options =>
 {
     options.UseNpgsql(postgresConn, npgsql =>
     {
-        
         npgsql.MigrationsAssembly(typeof(OtpDbContext).Assembly.GetName().Name);
-        // Retry on transient connection failures (network blips, restarts)
         npgsql.EnableRetryOnFailure(maxRetryCount: 5);
     });
-    if (builder.Environment.IsDevelopment())
-    {
-        options.EnableSensitiveDataLogging(false);  // explicitly OFF — OTPs leak otherwise
-        options.EnableDetailedErrors();
-    }
 });
+
+builder.Services.AddSingleton<IOtpHasher, Sha256OtpHasher>();
+builder.Services.AddSingleton<IOtpCodeGenerator, OtpCodeGenerator>();
 var app = builder.Build();
 
-// ─── Auto-apply migrations on startup ─────────────────────────
-// its for `docker compose up`.
-// Migrations apply at startup; the app waits for Postgres healthcheck.
+
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<OtpDbContext>();
@@ -31,5 +33,6 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
-
+app.MapStatusEndpoint();
+app.MapVerifyEndpoint();
 app.Run();
