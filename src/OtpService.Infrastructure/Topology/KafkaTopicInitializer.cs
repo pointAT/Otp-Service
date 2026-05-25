@@ -8,7 +8,9 @@ using OtpService.Infrastructure.Configuration;
 namespace OtpService.Infrastructure.topology;
 //the class that creates the topic at startup
 //This is the actual logic. It runs once at startup
-public class KafkaTopicInitializer : IHostedService
+
+//IHostedService runs once at startup and declares broker resources
+public sealed class KafkaTopicInitializer : IHostedService
 {
     private readonly KafkaOptions _options;
     private readonly ILogger<KafkaTopicInitializer> _logger;
