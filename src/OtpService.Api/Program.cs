@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using OtpService.Api.Endpoints;
+using OtpService.Api.Webhooks;
 using OtpService.Core.Configuration;
 using OtpService.Core.Hashing;
 using OtpService.Infrastructure.Persistence;
@@ -35,4 +36,5 @@ using (var scope = app.Services.CreateScope())
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapStatusEndpoint();
 app.MapVerifyEndpoint();
+app.MapWhatsAppWebhookEndpoint();
 app.Run();
