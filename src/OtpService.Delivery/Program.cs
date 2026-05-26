@@ -3,6 +3,7 @@ using OtpService.Core.Configuration;
 using OtpService.Delivery.Consumers;
 using OtpService.Infrastructure.Configuration;
 using OtpService.Infrastructure.Persistence;
+using OtpService.Infrastructure.RabbitMq;
 using OtpService.Infrastructure.Topology;
 using OtpService.Providers.Abstractions;
 using OtpService.Providers.Configuration;
@@ -40,6 +41,9 @@ builder.Services.AddHttpClient<IWhatsAppProvider, MockWhatsAppProvider>((sp, cli
 
 builder.Services.AddHostedService<RabbitMqTopologyInitializer>();
 builder.Services.AddHostedService<OtpDeliveryConsumer>();
+builder.Services.AddSingleton<RabbitMqPublisher>();
+builder.Services.AddSingleton<IRabbitMqPublisher>(sp => sp.GetRequiredService<RabbitMqPublisher>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<RabbitMqPublisher>());
 
 
 

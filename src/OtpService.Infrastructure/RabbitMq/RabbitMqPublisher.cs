@@ -42,7 +42,7 @@ public sealed class RabbitMqPublisher : IRabbitMqPublisher, IHostedService, IAsy
         var channelOpts = new CreateChannelOptions(
             publisherConfirmationsEnabled: true,
             publisherConfirmationTrackingEnabled: true);
-            
+
         _channel = await _connection.CreateChannelAsync(channelOpts, cancellationToken);
 
         _logger.LogInformation("RabbitMQ publisher connected.");
@@ -61,9 +61,9 @@ public sealed class RabbitMqPublisher : IRabbitMqPublisher, IHostedService, IAsy
 
         var props = new BasicProperties
         {
-            Persistent = true,        // disk-persisted, survives broker restart
+            Persistent = true, 
             ContentType = "application/json",
-            Priority = priority,      // 0-10, used by x-max-priority queue
+            Priority = priority, 
             MessageId = job.TrackingId.ToString()
         };
 
@@ -75,6 +75,72 @@ public sealed class RabbitMqPublisher : IRabbitMqPublisher, IHostedService, IAsy
             body: json,
             cancellationToken: cancellationToken);
 
+    }
+
+    public async Task PublishRetryAsync(SendOtpJob job, byte priority, int attempt, string retryQueueName,
+        CancellationToken cancellationToken)
+    {
+        if (_channel is null)
+            throw new InvalidOperationException("RabbitMQ channel is not initialized.");
+
+        var json = JsonSerializer.SerializeToUtf8Bytes(job);
+
+        var props = new BasicProperties
+        {
+            Persistent = true,
+            ContentType = "application/json",
+            Priority = priority,
+            MessageId = job.TrackingId.ToString(),
+           
+            Headers = new Dictionary<string, object?>
+            {
+                ["x-attempt"] = attempt
+            }
+        };
+        await _channel.BasicPublishAsync<BasicProperties>(
+            exchange: string.Empty,
+            routingKey: retryQueueName,
+            mandatory: false,
+            basicProperties: props,
+            body: json,
+            cancellationToken: cancellationToken);
+
+        _logger.LogDebug(
+            "Published retry for {TrackingId} → {Queue} (attempt {Attempt})",
+            job.TrackingId, retryQueueName, attempt);
+    
+    }
+
+
+public async Task PublishDeadLetterAsync(SendOtpJob job, string reason, CancellationToken cancellationToken)
+    {
+        if (_channel is null)
+            throw new InvalidOperationException("RabbitMQ channel is not initialized.");
+
+        var json = JsonSerializer.SerializeToUtf8Bytes(job);
+
+        var props = new BasicProperties
+        {
+            Persistent = true,
+            ContentType = "application/json",
+            MessageId = job.TrackingId.ToString(),
+            Headers = new Dictionary<string, object?>
+            {
+                ["x-reason"] = reason
+            }
+        };
+
+       
+        await _channel.BasicPublishAsync<BasicProperties>(
+            exchange: RabbitMqTopology.DeadLetterExchange,
+            routingKey: string.Empty,
+            mandatory: false,
+            basicProperties: props,
+            body: json,
+            cancellationToken: cancellationToken);
+        _logger.LogWarning(
+            "Dead-lettered {TrackingId}: {Reason}",
+            job.TrackingId, reason);
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
