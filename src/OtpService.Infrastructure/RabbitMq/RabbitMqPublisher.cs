@@ -94,7 +94,7 @@ public sealed class RabbitMqPublisher : IRabbitMqPublisher, IHostedService, IAsy
            
             Headers = new Dictionary<string, object?>
             {
-                ["x-attempt"] = attempt
+                ["x-attempt"] = 1
             }
         };
         await _channel.BasicPublishAsync<BasicProperties>(

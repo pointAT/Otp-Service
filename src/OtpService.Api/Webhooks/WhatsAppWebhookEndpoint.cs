@@ -112,7 +112,17 @@ public static class WhatsAppWebhookEndpoint
                 var statusString = statusEl.GetString();
                 if (messageId is null || statusString is null) continue;
 
-                await ApplyStatusUpdateAsync(db, messageId, statusString, logger, cancellationToken);
+                //  parse the timestamp. Meta sends it as a unix-second string, e.g. "1716660000".
+                // If missing or unparseable, default to 0 — which means "always apply" if we have no
+                // better information. (Don't reject the webhook just for missing timestamp.)
+                long incomingTimestamp = 0;
+                if (status.TryGetProperty("timestamp", out var tsEl))
+                {
+                    var tsString = tsEl.GetString();
+                    long.TryParse(tsString, out incomingTimestamp);
+                }
+
+                await ApplyStatusUpdateAsync(db, messageId, statusString, incomingTimestamp, logger, cancellationToken);
             }
 
             await db.SaveChangesAsync(cancellationToken);
@@ -122,48 +132,63 @@ public static class WhatsAppWebhookEndpoint
         return app;
     }
 
-    private static async Task ApplyStatusUpdateAsync(
-        OtpDbContext db,
-        string messageId,
-        string statusString,
-        ILogger logger,
-        CancellationToken cancellationToken)
+  private static async Task ApplyStatusUpdateAsync(
+    OtpDbContext db,
+    string messageId,
+    string statusString,
+    long incomingTimestamp,
+    ILogger logger,
+    CancellationToken cancellationToken)
+{
+    var record = await db.OtpRecords
+        .FirstOrDefaultAsync(r => r.WhatsAppMessageId == messageId, cancellationToken);
+
+    if (record is null)
     {
-        var record = await db.OtpRecords
-            .FirstOrDefaultAsync(r => r.WhatsAppMessageId == messageId, cancellationToken);
-
-        if (record is null)
-        {
-            logger.LogWarning("Webhook for unknown message id {MessageId}", messageId);
-            return;
-        }
-
-        OtpStatus? newStatus = statusString.ToLowerInvariant() switch
-        {
-            "sent"      => OtpStatus.Sent,
-            "delivered" => OtpStatus.Delivered,
-            "read"      => OtpStatus.Delivered,
-            "failed"    => OtpStatus.Failed,
-            _           => null
-        };
-
-        if (newStatus is null)
-        {
-            logger.LogWarning("Unknown webhook status '{Status}' for {MessageId}", statusString, messageId);
-            return;
-        }
-
-        if (record.Status == OtpStatus.Verified ||
-            record.Status == OtpStatus.Locked   ||
-            record.Status == OtpStatus.Expired)
-        {
-            return;
-        }
-
-        record.Status = newStatus.Value;
-
-        logger.LogInformation(
-            "Webhook applied: {MessageId} → {Status}",
-            messageId, newStatus.Value);
+        logger.LogWarning("Webhook for unknown message id {MessageId}", messageId);
+        return;
     }
+
+    // If we've already applied a NEWER webhook, ignore this one.
+    
+    // Result: final state stays failed. Wall-clock truth, not arrival order.
+    if (record.LastAppliedTimestamp.HasValue &&
+        incomingTimestamp <= record.LastAppliedTimestamp.Value)
+    {
+        logger.LogInformation(
+            "Skipping out-of-order webhook for {MessageId} (incoming {Incoming} <= applied {Applied})",
+            messageId, incomingTimestamp, record.LastAppliedTimestamp.Value);
+        return;
+    }
+
+    OtpStatus? newStatus = statusString.ToLowerInvariant() switch
+    {
+        "sent"      => OtpStatus.Sent,
+        "delivered" => OtpStatus.Delivered,
+        "read"      => OtpStatus.Delivered,
+        "failed"    => OtpStatus.Failed,
+        _           => null
+    };
+
+    if (newStatus is null)
+    {
+        logger.LogWarning("Unknown webhook status '{Status}' for {MessageId}", statusString, messageId);
+        return;
+    }
+
+    // Keep the terminal-state guard as a SAFETY NET for user-driven states
+    if (record.Status == OtpStatus.Verified ||
+        record.Status == OtpStatus.Locked   ||
+        record.Status == OtpStatus.Expired)
+    {
+        return;
+    }
+
+    record.Status = newStatus.Value;
+    record.LastAppliedTimestamp = incomingTimestamp;   
+
+    logger.LogInformation(
+        "Webhook applied: {MessageId} → {Status} (ts {Timestamp})",
+        messageId, newStatus.Value, incomingTimestamp);
+}
 }
