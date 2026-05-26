@@ -122,14 +122,17 @@ public sealed class OtpRequestsConsumer : BackgroundService
         var code = _codeGenerator.Generate();
         var salt = _hasher.GenerateSalt();
         var codeHash = _hasher.Hash(code, salt);
-
-       
+        
+        //Use PriorityMapper to remove the hardcoded of Priority, now it will depend on  PriorityMapper class
+        var systemPriority = PriorityMapper.FromPurpose(request.Purpose);
+        var effectivePriority = PriorityMapper.ApplyProducerDowngrade(systemPriority, request.Priority);
+        
         var record = new OtpRecord
         {
             RequestId = request.RequestId,
             Msisdn = request.Msisdn,
             Purpose = request.Purpose,
-            Priority = OtpPriority.Normal,
+            Priority = effectivePriority,
             CodeHash = codeHash,
             Salt = salt,
             CreatedAt = DateTimeOffset.UtcNow,
@@ -152,8 +155,10 @@ public sealed class OtpRequestsConsumer : BackgroundService
             Attempt: 1
         );
 
-        await _publisher.PublishSendJobAsync(job, priority: 5, cancellationToken);
-
+        await _publisher.PublishSendJobAsync(
+            job,
+            priority: (byte)effectivePriority,        // 1, 5, or 10    //The cast is because _publisher.PublishSendJobAsync takes a byte (RabbitMQ priority is 0–255 but we cap at 10). The enum is backed by int, so we cast down.
+            cancellationToken);
         _logger.LogInformation(
             "Queued OTP {TrackingId} for {Msisdn} (purpose {Purpose})",
             record.TrackingId, request.Msisdn, request.Purpose);
