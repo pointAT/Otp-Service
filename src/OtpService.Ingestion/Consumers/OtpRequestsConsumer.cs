@@ -2,6 +2,7 @@ using System.Text.Json;
 using Confluent.Kafka;
 
 using Microsoft.Extensions.Options;
+using OtpService.Core.Abstractions;
 using OtpService.Core.Configuration;
 using OtpService.Core.Contracts;
 using OtpService.Core.Hashing;
@@ -24,6 +25,7 @@ public sealed class OtpRequestsConsumer : BackgroundService
     private readonly IOtpHasher _hasher;
     private readonly IRabbitMqPublisher _publisher;
     private readonly ILogger<OtpRequestsConsumer> _logger;
+    private readonly IDedupeStore _dedupe;
 
     public OtpRequestsConsumer(
         IOptions<KafkaOptions> kafkaOptions,
@@ -32,7 +34,7 @@ public sealed class OtpRequestsConsumer : BackgroundService
         IOtpCodeGenerator codeGenerator,
         IOtpHasher hasher,
         IRabbitMqPublisher publisher,
-        ILogger<OtpRequestsConsumer> logger)
+        ILogger<OtpRequestsConsumer> logger, IDedupeStore dedupe)
     {
         _kafkaOptions = kafkaOptions.Value;
         _otpOptions = otpOptions.Value;
@@ -41,6 +43,7 @@ public sealed class OtpRequestsConsumer : BackgroundService
         _hasher = hasher;
         _publisher = publisher;
         _logger = logger;
+        _dedupe = dedupe;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -72,6 +75,7 @@ public sealed class OtpRequestsConsumer : BackgroundService
 
                 // Hand off the actual processing to a separate method .
                 await ProcessMessageAsync(result, stoppingToken);
+                
 
                 // Commit AFTER everything succeeded. This is the at-least-once .
                 consumer.Commit(result);
@@ -97,16 +101,24 @@ public sealed class OtpRequestsConsumer : BackgroundService
         ConsumeResult<string, string> result,
         CancellationToken cancellationToken)
     {
+        
         var request = JsonSerializer.Deserialize<OtpRequestMessage>(result.Message.Value);
-        if (request is null)
+        // Redis SETNX atomically reserves this request
+        var dedupeTtl = TimeSpan.FromSeconds(_otpOptions.TtlSeconds * 2);
+        var reserved = await _dedupe.TryReserveAsync(
+            key: request.RequestId,
+            ttl: dedupeTtl,
+            cancellationToken: cancellationToken);
+        if (!reserved)
         {
-            _logger.LogWarning(
-                "Skipping null/invalid payload at partition {Partition} offset {Offset}",
-                result.Partition.Value, result.Offset.Value);
-            return;   // returning is fine — main loop will commit and move on
+            _logger.LogInformation(
+                "Duplicate request {RequestId} "
+                ,
+                request.RequestId);
+            return;   // commit the offset and move on 
         }
 
-       
+
         var code = _codeGenerator.Generate();
         var salt = _hasher.GenerateSalt();
         var codeHash = _hasher.Hash(code, salt);

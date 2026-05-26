@@ -1,11 +1,14 @@
 using Microsoft.EntityFrameworkCore;
+using OtpService.Core.Abstractions;
 using OtpService.Core.Configuration;
 using OtpService.Core.Hashing;
 using OtpService.Infrastructure.Configuration;
 using OtpService.Infrastructure.Persistence;
 using OtpService.Infrastructure.RabbitMq;
+using OtpService.Infrastructure.Redis;
 using OtpService.Infrastructure.Topology;
 using OtpService.Ingestion.Consumers;
+using StackExchange.Redis;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -28,10 +31,16 @@ builder.Services.AddDbContext<OtpDbContext>(options =>
         npgsql.EnableRetryOnFailure(maxRetryCount: 5);
     });
 });
+var redisConn = builder.Configuration.GetConnectionString("Redis")
+               ?? throw new InvalidOperationException("ConnectionStrings:Redis is not configured.");
 
+builder.Services.AddSingleton<IConnectionMultiplexer>(
+    _ => ConnectionMultiplexer.Connect(redisConn));
 //Hasing service
 builder.Services.AddSingleton<IOtpCodeGenerator, OtpCodeGenerator>();
 builder.Services.AddSingleton<IOtpHasher, Sha256OtpHasher>();
+builder.Services.AddSingleton<IDedupeStore, RedisDedupeStore>();
+
 
 
 // Registered as singleton first so both the consumer worker AND the hosted-service
