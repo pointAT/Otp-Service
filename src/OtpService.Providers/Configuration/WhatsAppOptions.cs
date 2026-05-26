@@ -16,4 +16,10 @@ public sealed class WhatsAppOptions
 
     //Meta API version, like v20.0. Mock ignores this
     public string ApiVersion { get; set; } = "v20.0";
+    
+    // uses to sign webhooks. In .env: WhatsApp__AppSecret.
+    public string AppSecret { get; set; } = "dev-app-secret-change-me";
+
+    // Token Meta sends in the GET hub.verify_token query parameter
+    public string VerifyToken { get; set; } = "dev-verify-token-change-me";
 }

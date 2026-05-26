@@ -1,27 +1,40 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using OtpService.Core.Models;
 using OtpService.Infrastructure.Persistence;
+using OtpService.Providers.Configuration;
 
 namespace OtpService.Api.Webhooks;
 
-// Receives WhatsApp delivery-status callbacks and updates the matching OtpRecord.
 public static class WhatsAppWebhookEndpoint
 {
     public static IEndpointRouteBuilder MapWhatsAppWebhookEndpoint(this IEndpointRouteBuilder app)
     {
-        
-       
+      
         app.MapGet("/webhooks/whatsapp", (
             [Microsoft.AspNetCore.Mvc.FromQuery(Name = "hub.mode")] string? hubMode,
             [Microsoft.AspNetCore.Mvc.FromQuery(Name = "hub.verify_token")] string? hubVerifyToken,
-            [Microsoft.AspNetCore.Mvc.FromQuery(Name = "hub.challenge")] string? hubChallenge) =>
+            [Microsoft.AspNetCore.Mvc.FromQuery(Name = "hub.challenge")] string? hubChallenge,
+            IOptions<WhatsAppOptions> waOptions,
+            ILogger<Program> logger) =>
         {
-            // TODO Day 6: verify hubVerifyToken == WhatsApp__VerifyToken from config.
-            if (hubMode == "subscribe" && hubChallenge is not null)
-                return Results.Text(hubChallenge);
+            if (hubMode != "subscribe" || hubChallenge is null)
+                return Results.BadRequest();
 
-            return Results.BadRequest();
+            // Verify the token matches our configured one. Constant-time compare
+            // to prevent timing attacks, same principle as the HMAC verifier.
+            var expected = System.Text.Encoding.UTF8.GetBytes(waOptions.Value.VerifyToken);
+            var received = System.Text.Encoding.UTF8.GetBytes(hubVerifyToken ?? string.Empty);
+
+            if (received.Length != expected.Length ||
+                !System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(received, expected))
+            {
+                logger.LogWarning("Webhook subscription denied — invalid verify token");
+                return Results.Forbid();
+            }
+
+            return Results.Text(hubChallenge);
         });
 
         // POST /webhooks/whatsapp — the real work
@@ -30,15 +43,43 @@ public static class WhatsAppWebhookEndpoint
         app.MapPost("/webhooks/whatsapp", async (
             HttpRequest request,
             OtpDbContext db,
+            IOptions<WhatsAppOptions> waOptions,
             ILogger<Program> logger,
             CancellationToken cancellationToken) =>
         {
-          
-            
-            using var doc = await JsonDocument.ParseAsync(
-                request.Body, cancellationToken: cancellationToken);
+            // We MUST read the body before any parsing. The HMAC is computed
+            // over the raw bytes — reformatting (whitespace, key reordering)
+            // breaks the signature.
+            byte[] rawBody;
+            using (var ms = new MemoryStream())
+            {
+                await request.Body.CopyToAsync(ms, cancellationToken);
+                rawBody = ms.ToArray();
+            }
 
-            
+            if (rawBody.Length == 0)
+            {
+                logger.LogWarning("Webhook with empty body — rejecting");
+                return Results.BadRequest();
+            }
+
+            //  Verify the HMAC signature 
+            var signatureHeader = request.Headers["X-Hub-Signature-256"].FirstOrDefault();
+
+            if (!HmacVerifier.Verify(rawBody, signatureHeader, waOptions.Value.AppSecret))
+            {
+                logger.LogWarning(
+                    "Webhook signature verification FAILED (header present: {HasHeader})",
+                    signatureHeader is not null);
+                
+                // 401 Unauthorized — Meta interprets this as "stop sending me here"
+              
+                return Results.Unauthorized();
+            }
+
+            //  Parse the JSON (now safe ) 
+            using var doc = JsonDocument.Parse(rawBody);
+
             if (!doc.RootElement.TryGetProperty("entry", out var entry) ||
                 entry.GetArrayLength() == 0)
             {
@@ -81,7 +122,6 @@ public static class WhatsAppWebhookEndpoint
         return app;
     }
 
- 
     private static async Task ApplyStatusUpdateAsync(
         OtpDbContext db,
         string messageId,
@@ -89,7 +129,6 @@ public static class WhatsAppWebhookEndpoint
         ILogger logger,
         CancellationToken cancellationToken)
     {
-       
         var record = await db.OtpRecords
             .FirstOrDefaultAsync(r => r.WhatsAppMessageId == messageId, cancellationToken);
 
@@ -103,20 +142,17 @@ public static class WhatsAppWebhookEndpoint
         {
             "sent"      => OtpStatus.Sent,
             "delivered" => OtpStatus.Delivered,
-            "read"      => OtpStatus.Delivered,   
+            "read"      => OtpStatus.Delivered,
             "failed"    => OtpStatus.Failed,
             _           => null
         };
 
         if (newStatus is null)
         {
-            logger.LogWarning(
-                "Unknown webhook status '{Status}' for {MessageId}",
-                statusString, messageId);
+            logger.LogWarning("Unknown webhook status '{Status}' for {MessageId}", statusString, messageId);
             return;
         }
 
-      
         if (record.Status == OtpStatus.Verified ||
             record.Status == OtpStatus.Locked   ||
             record.Status == OtpStatus.Expired)

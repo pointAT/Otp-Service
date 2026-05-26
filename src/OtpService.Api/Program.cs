@@ -4,10 +4,14 @@ using OtpService.Api.Webhooks;
 using OtpService.Core.Configuration;
 using OtpService.Core.Hashing;
 using OtpService.Infrastructure.Persistence;
+using OtpService.Providers.Configuration;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<OtpOptions>(
     builder.Configuration.GetSection("Otp"));
+builder.Services.Configure<WhatsAppOptions>(
+    builder.Configuration.GetSection("WhatsApp"));
 
 
 var postgresConn = builder.Configuration.GetConnectionString("Postgres")
