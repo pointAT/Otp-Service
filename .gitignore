@@ -25,4 +25,4 @@ TestResults/
 coverage.*
 
 
-*.log
+/*.log

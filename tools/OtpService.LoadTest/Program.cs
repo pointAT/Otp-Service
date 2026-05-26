@@ -39,7 +39,7 @@ var stopwatch = Stopwatch.StartNew();
 
 // Pre-build a pool of msisdns so we have variety in partition keys
 var random = new Random(42);
-var msisdns = Enumerable.Range(0, 1000)
+var msisdns = Enumerable.Range(0, 100_000)
     .Select(_ => $"+9647{random.Next(10000000, 99999999)}")
     .ToArray();
 
