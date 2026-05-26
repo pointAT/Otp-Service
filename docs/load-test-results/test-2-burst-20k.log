@@ -1,0 +1,83 @@
+=== OTP Load Test ===
+Bootstrap:  localhost:9092
+Topic:      otp.requests
+Mode:       burst
+Rate:       20000 msg/sec
+Duration:   1s
+Total:      20,000 messages
+
+BURST: producing 20,000 messages as fast as possible...
+
+All 20,000 messages queued. Flushing producer...
+
+=== Results ===
+Mode:              burst
+Duration (wall):   0.29s
+Messages queued:   20,000
+Messages acked:    20,000
+Messages failed:   0
+Effective rate:    69387 msg/sec
+
+=== State at 23:32:49 ===
+ status | count 
+--------+-------
+      2 |   268
+      3 |   838
+(2 rows)
+
+queue ready=0 unacked=1
+=== State at 23:32:52 ===
+ status | count 
+--------+-------
+      2 |   392
+      3 |  1251
+(2 rows)
+
+queue ready=0 unacked=1
+=== State at 23:32:55 ===
+ status | count 
+--------+-------
+      0 |     1
+      2 |   350
+      3 |  1862
+(3 rows)
+
+queue ready=0 unacked=0
+=== State at 23:32:57 ===
+ status | count 
+--------+-------
+      0 |     1
+      2 |   263
+      3 |  2489
+(3 rows)
+
+queue ready=0 unacked=0
+=== State at 23:32:58 ===
+ status | count 
+--------+-------
+      0 |     1
+      2 |   337
+      3 |  2709
+(3 rows)
+
+queue ready=0 unacked=1
+=== State at 23:33:00 ===
+ status | count 
+--------+-------
+      2 |   350
+      3 |  3084
+(2 rows)
+
+queue ready=0 unacked=1
+=== State at 23:33:02 ===
+ status | count 
+--------+-------
+      2 |   380
+      3 |  3445
+(2 rows)
+
+queue ready=0 unacked=1
+
+=== Final analysis ===
+Cooldown rejections: 354
+Queued OTPs: 10687
