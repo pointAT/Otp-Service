@@ -40,6 +40,7 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(
 builder.Services.AddSingleton<IOtpCodeGenerator, OtpCodeGenerator>();
 builder.Services.AddSingleton<IOtpHasher, Sha256OtpHasher>();
 builder.Services.AddSingleton<IDedupeStore, RedisDedupeStore>();
+builder.Services.AddSingleton<ICooldownStore, RedisCooldownStore>();  
 
 
 

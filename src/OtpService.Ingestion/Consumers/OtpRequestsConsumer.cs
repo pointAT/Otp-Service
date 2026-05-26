@@ -26,6 +26,7 @@ public sealed class OtpRequestsConsumer : BackgroundService
     private readonly IRabbitMqPublisher _publisher;
     private readonly ILogger<OtpRequestsConsumer> _logger;
     private readonly IDedupeStore _dedupe;
+    private readonly ICooldownStore _cooldown;
 
     public OtpRequestsConsumer(
         IOptions<KafkaOptions> kafkaOptions,
@@ -34,7 +35,7 @@ public sealed class OtpRequestsConsumer : BackgroundService
         IOtpCodeGenerator codeGenerator,
         IOtpHasher hasher,
         IRabbitMqPublisher publisher,
-        ILogger<OtpRequestsConsumer> logger, IDedupeStore dedupe)
+        ILogger<OtpRequestsConsumer> logger, IDedupeStore dedupe, ICooldownStore cooldown)
     {
         _kafkaOptions = kafkaOptions.Value;
         _otpOptions = otpOptions.Value;
@@ -44,6 +45,7 @@ public sealed class OtpRequestsConsumer : BackgroundService
         _publisher = publisher;
         _logger = logger;
         _dedupe = dedupe;
+        _cooldown = cooldown;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -109,6 +111,7 @@ public sealed class OtpRequestsConsumer : BackgroundService
             key: request.RequestId,
             ttl: dedupeTtl,
             cancellationToken: cancellationToken);
+       
         if (!reserved)
         {
             _logger.LogInformation(
@@ -116,6 +119,18 @@ public sealed class OtpRequestsConsumer : BackgroundService
                 ,
                 request.RequestId);
             return;   // commit the offset and move on 
+        }
+        var cooldownPassed = await _cooldown.TryAcquireAsync(
+            msisdn: request.Msisdn,
+            cooldown: TimeSpan.FromSeconds(_otpOptions.CooldownSeconds),
+            cancellationToken: cancellationToken);
+
+        if (!cooldownPassed)
+        {
+            _logger.LogWarning(
+                "Cooldown active for {Msisdn} — rejecting request {RequestId}",
+                MaskMsisdn(request.Msisdn), request.RequestId);
+            return;   // commit Kafka offset, abuser doesn't get a retry chance
         }
 
 
@@ -162,5 +177,11 @@ public sealed class OtpRequestsConsumer : BackgroundService
         _logger.LogInformation(
             "Queued OTP {TrackingId} for {Msisdn} (purpose {Purpose})",
             record.TrackingId, request.Msisdn, request.Purpose);
+    }
+    private static string MaskMsisdn(string msisdn)
+    {
+        if (string.IsNullOrEmpty(msisdn) || msisdn.Length <= 7)
+            return msisdn;
+        return $"{msisdn[..4]}***{msisdn[^3..]}";
     }
 }
