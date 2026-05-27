@@ -1,9 +1,7 @@
 
 
 services:
-  # ─────────────────────────────────────────────────────────
-  # Postgres — durable OTP state
-  # ─────────────────────────────────────────────────────────
+ 
   postgres:
     image: postgres:16-alpine
     container_name: otp-postgres
@@ -21,9 +19,9 @@ services:
       timeout: 3s
       retries: 10
 
-  # ─────────────────────────────────────────────────────────
+  
   # Redis — dedupe + rate limiting
-  # ─────────────────────────────────────────────────────────
+  
   redis:
     image: redis:7-alpine
     container_name: otp-redis
@@ -38,9 +36,8 @@ services:
       timeout: 3s
       retries: 10
 
-  # ─────────────────────────────────────────────────────────
-  # Kafka — KRaft mode, no Zookeeper
-  # ─────────────────────────────────────────────────────────
+  # Kafka — KRaft mode.
+  
   kafka:
     image: confluentinc/cp-kafka:7.6.1
     container_name: otp-kafka
@@ -73,9 +70,9 @@ services:
       retries: 10
       start_period: 30s
 
-  # ─────────────────────────────────────────────────────────
+  
   # Kafka UI — visualize topics, partitions, consumer groups
-  # ─────────────────────────────────────────────────────────
+  
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: otp-kafka-ui
@@ -89,9 +86,9 @@ services:
       kafka:
         condition: service_healthy
 
-  # ─────────────────────────────────────────────────────────
+  
   # RabbitMQ — delivery pipeline with priority + DLX
-  # ─────────────────────────────────────────────────────────
+  
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     container_name: otp-rabbitmq
@@ -109,9 +106,9 @@ services:
       timeout: 5s
       retries: 10
 
-  # ─────────────────────────────────────────────────────────
+  
   # Mock Meta — pretends to be Meta WhatsApp Business Cloud API
-  # ─────────────────────────────────────────────────────────
+  
   mockmeta:
     build:
       context: .
@@ -124,9 +121,9 @@ services:
       postgres:
         condition: service_healthy
 
-  # ─────────────────────────────────────────────────────────
+  
   # OTP Api — verify, webhook, status endpoints
-  # ─────────────────────────────────────────────────────────
+  
   api:
     build:
       context: .
@@ -143,9 +140,9 @@ services:
       rabbitmq:
         condition: service_healthy
 
-  # ─────────────────────────────────────────────────────────
+  
   # OTP Ingestion — Kafka consumer → RabbitMQ producer
-  # ─────────────────────────────────────────────────────────
+  
   ingestion:
     build:
       context: .
@@ -164,9 +161,9 @@ services:
       redis:
         condition: service_healthy
 
-  # ─────────────────────────────────────────────────────────
+  
   # OTP Delivery — RabbitMQ consumer → WhatsApp provider
-  # ─────────────────────────────────────────────────────────
+  
   delivery:
     build:
       context: .
